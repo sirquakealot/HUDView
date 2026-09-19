@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>menuview – Quake Live HUD Editor</title>
+<style>
+  :root{
+    --bg:#14161a; --panel:#1c1f26; --panel2:#22262f; --panel3:#282d38; --line:#2e3440;
+    --fg:#e6e9ef; --dim:#8b94a5; --dim2:#5f687a; --accent:#ff8c3a; --accent2:#4aa3ff;
+    --ok:#5ac47a; --warn:#e8c14a; --err:#e5544b; --add:#2e5c3a; --del:#5c2e2e;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#39404e;border-radius:5px;border:2px solid var(--panel)}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  header{
+    display:flex; align-items:center; gap:8px; padding:9px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex:none;
+  }
+  header h1{font-size:15px; margin:0; font-weight:600; display:flex; align-items:center; gap:8px}
+  header h1 b{color:var(--accent); font-weight:700}
+  header .sub{color:var(--dim); font-size:12px; margin-left:-6px}
+  #fname{color:var(--dim); font-size:12.5px; font-family:var(--mono); max-width:340px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .spacer{flex:1}
+
+  button{
+    background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;
+    font-family:inherit; transition:border-color .12s, background .12s;
+  }
+  button:hover:not(:disabled){border-color:var(--accent); background:var(--panel3)}
+  button:disabled{opacity:.35; cursor:not-allowed}
+  button.primary{background:var(--accent); color:#1a1207; border-color:var(--accent); font-weight:600}
+  button.primary:hover:not(:disabled){background:#ffa05c}
+  button.icon{padding:6px 9px; font-family:var(--mono); line-height:1}
+  button.mini{padding:2px 7px; font-size:11.5px; border-radius:4px}
+  button.danger:hover:not(:disabled){border-color:var(--err); color:#ffb4ae}
+
+  main{flex:1; display:flex; min-height:0}
+  .stagewrap{flex:1; display:flex; flex-direction:column; min-width:260px; position:relative}
+
+  .toolbar{
+    flex:none; display:flex; align-items:center; gap:10px; padding:6px 12px; flex-wrap:wrap;
+    background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px;
+  }
+  .toolbar label.t{color:var(--dim)}
+  .toolbar input[type=range]{width:96px; accent-color:var(--accent)}
+  .toolbar .val{font-family:var(--mono); width:40px; color:var(--dim)}
+  .toolbar select{background:var(--panel2); color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 7px; font-size:12.5px}
+  .toolbar .sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px}
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; color:var(--dim);
+    background:var(--panel2); border:1px solid var(--line); border-radius:20px;
+    padding:3px 10px 3px 8px; cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .chip:hover{color:var(--fg)}
+  .chip input{accent-color:var(--accent); margin:0}
+  .chip:has(input:checked){color:var(--fg)}
+
+  .seg{display:flex}
+  .seg button{border-radius:0; font-size:12.5px; padding:4px 11px; border-right-width:0}
+  .seg button:first-child{border-radius:5px 0 0 5px}
+  .seg button:last-child{border-radius:0 5px 5px 0; border-right-width:1px}
+  .seg button.on{background:var(--accent); color:#1a1207; border-color:var(--accent); font-weight:600}
+
+  .fixed-aspect{font-family:var(--mono); color:var(--dim); background:var(--panel2);
+    border:1px solid var(--line); border-radius:5px; padding:3px 9px; cursor:default}
+
+  #stage{flex:1; position:relative; overflow:auto; padding:22px; display:flex}
+  #stage.pan{cursor:grab}
+  #stage.panning{cursor:grabbing}
+  #stageInner{position:relative; margin:auto; flex:none}
+  #screen{
+    position:relative; overflow:hidden; flex:none;
+    background:
+      linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px) 0 0/100% 40px,
+      linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px) 0 0/40px 100%,
+      radial-gradient(120% 90% at 50% 15%, #3c4048, #191b20 70%);
+    box-shadow:0 0 0 1px var(--line), 0 24px 60px -20px #000;
+  }
+  #screen.grid-off{background:radial-gradient(120% 90% at 50% 15%, #3c4048, #191b20 70%)}
+  #screen.has-shot{background:#0b0c0e}
+  #backdrop{position:absolute; inset:0; width:100%; height:100%; object-fit:fill;
+    pointer-events:none; user-select:none}
+  #centerV{position:absolute; left:50%; top:0; bottom:0; width:1px;
+    background:rgba(255,140,58,.22); pointer-events:none}
+  #band{position:absolute; top:0; bottom:0; pointer-events:none;
+    border-left:1px dashed rgba(74,163,255,.3); border-right:1px dashed rgba(74,163,255,.3)}
+  .guide{position:absolute; background:#39d0ff; pointer-events:none; z-index:120;
+    box-shadow:0 0 4px rgba(57,208,255,.7)}
+  .guide.v{width:1px; top:0; bottom:0}
+  .guide.h{height:1px; left:0; right:0}
+  #marquee{position:absolute; border:1px solid var(--accent2);
+    background:rgba(74,163,255,.12); pointer-events:none; z-index:130}
+
+  .el{position:absolute; pointer-events:auto}
+  .el:hover:not(.sel) .txt,
+  .el:hover:not(.sel) .art,
+  .el:hover:not(.sel) .ico{outline:1px solid rgba(255,255,255,.55)}
+  .el:not(:has(.txt, .art, .ico)):hover{outline:1px dashed rgba(255,255,255,.28)}
+  .el.sel{z-index:50}
+  .el.sel .art,
+  .el.sel .ico{outline:1.5px solid var(--accent)}
+  .el.sel:not(:has(.txt, .art, .ico)){outline:1.5px solid var(--accent)}
+  .el.isnew{box-shadow:0 0 0 1px var(--ok)}
+  .el.sel2 .art, .el.sel2 .ico, .el.sel2 .mark{outline-color:var(--accent2) !important}
+  .el.sel2:not(:has(.txt, .art, .ico)){outline:1.5px solid var(--accent2)}
+  .el .txt{white-space:pre; line-height:1; position:absolute; transform-origin:left top}
+  .el .txt, .el .art, .el .ico, .el .area{pointer-events:auto}
+  .el.hl .txt, .el.hl .art, .el.hl .ico, .el.hl .area{outline:2px solid #39d0ff}
+  .el.hl:not(:has(.txt, .art, .ico, .area)){outline:2px solid #39d0ff}
+  .el .mark{position:absolute; outline:1.5px solid var(--accent); pointer-events:none;
+    background:rgba(255,140,58,.07)}
+  .el .ico{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    overflow:hidden; color:#fff; text-shadow:0 1px 2px #000}
+  .el .art{position:absolute; inset:0; isolation:isolate}
+  .el .art img{position:absolute; inset:0; width:100%; height:100%;
+    object-fit:fill; pointer-events:none; -webkit-user-drag:none}
+  .el .art .tint{position:absolute; inset:0; mix-blend-mode:multiply;
+    -webkit-mask-size:100% 100%; mask-size:100% 100%;
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; pointer-events:none}
+  .el .area{position:absolute; inset:0; border:1px dashed rgba(255,255,255,.3);
+    background:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0 6px,transparent 6px 12px);
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+    color:rgba(255,255,255,.55); font:10px/1 var(--mono)}
+  .hnd{position:absolute; width:9px; height:9px; margin:-5px 0 0 -5px; z-index:60;
+    background:var(--accent); border:1px solid #1a1207; border-radius:2px}
+  .hnd.nw,.hnd.se{cursor:nwse-resize} .hnd.ne,.hnd.sw{cursor:nesw-resize}
+  .hnd.n,.hnd.s{cursor:ns-resize} .hnd.w,.hnd.e{cursor:ew-resize}
+  #anchor{position:absolute; z-index:60; width:11px; height:11px; margin:-6px 0 0 -6px;
+    border:1.5px solid var(--accent); border-radius:50%; pointer-events:none;
+    background:rgba(255,140,58,.25); box-shadow:0 0 0 1px #000}
+  #origin{position:absolute; z-index:60; width:15px; height:15px; margin:-8px 0 0 -8px;
+    border:1.5px solid var(--accent2); border-radius:50%; cursor:move;
+    background:rgba(74,163,255,.2); box-shadow:0 0 0 1px #000}
+
+  .gutter{flex:none; width:5px; cursor:col-resize; background:var(--line)}
+  .gutter:hover{background:var(--accent)}
+
+  aside{
+    width:376px; flex:none; background:var(--panel); border-left:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .tabs{display:flex; border-bottom:1px solid var(--line); flex:none}
+  .tabs button{
+    flex:1; border:0; border-radius:0; background:transparent; color:var(--dim);
+    padding:10px 2px; font-size:12.5px; border-bottom:2px solid transparent;
+  }
+  .tabs button:hover{background:var(--panel2); border-bottom-color:var(--line)}
+  .tabs button.on{color:var(--fg); border-bottom-color:var(--accent)}
+  .tabs button .badge{display:inline-block; min-width:16px; padding:0 4px; margin-left:4px;
+    border-radius:8px; background:var(--accent); color:#1a1207; font-size:10.5px; font-weight:700}
+  .tabs button .badge.q{background:var(--warn)}
+  .pane{flex:1; overflow-y:auto; padding:13px; display:none}
+  .pane.on{display:block}
+
+  .grp{margin-bottom:16px}
+  .grp h3{
+    font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
+    margin:0 0 8px; font-weight:600; display:flex; align-items:center; gap:8px;
+  }
+  .grp h3 .h3btns{margin-left:auto; display:flex; gap:4px; text-transform:none; letter-spacing:0}
+  details.grp > summary{
+    font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
+    font-weight:600; cursor:pointer; margin-bottom:8px; list-style:none;
+  }
+  details.grp > summary::-webkit-details-marker{display:none}
+  details.grp > summary::before{content:"▸  "}
+  details.grp[open] > summary::before{content:"▾  "}
+  details.grp > summary:hover{color:var(--fg)}
+
+  .row{display:flex; align-items:center; gap:9px; margin-bottom:8px}
+  .row label{flex:none; width:86px; color:var(--dim); font-size:12.5px}
+  .row input[type=range]{flex:1; accent-color:var(--accent); min-width:0}
+  .row .val{flex:none; width:42px; text-align:right; font-family:var(--mono); font-size:12px}
+  select, input[type=number], input[type=text], textarea{
+    background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    border-radius:5px; padding:5px 7px; font-family:inherit; font-size:12.5px; min-width:0;
+  }
+  input:focus, select:focus, textarea:focus{outline:none; border-color:var(--accent)}
+  input[type=number]{font-family:var(--mono); width:100%}
+  .pos input{font-family:var(--mono); width:100%}
+  select{flex:1}
+  .row .seg{flex:1}
+  .row .seg button{flex:1; padding:5px 0}
+
+  .pos{display:grid; grid-template-columns:auto 1fr auto 1fr; gap:6px 8px; align-items:center}
+  .pos label{color:var(--dim); font-size:12.5px; font-family:var(--mono); text-align:right}
+  .pos .abs{grid-column:1/-1; color:var(--dim2); font-size:11.5px; font-family:var(--mono)}
+
+  .gtgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:5px}
+  .gtgrid button{padding:5px 0; font-size:12px; border-radius:5px; color:var(--dim)}
+  .gtgrid button.on{background:rgba(255,140,58,.16); border-color:var(--accent); color:var(--fg); font-weight:600}
+  .gtgrid button.cur{box-shadow:inset 0 -2.5px 0 var(--accent2)}
+  .gtgrid button.part{background:rgba(255,140,58,.07); border-style:dashed; color:var(--dim)}
+
+  .hint{font-size:12px; color:var(--dim); margin:8px 0 0; line-height:1.5}
+  .hint code{font-family:var(--mono); color:var(--accent2); font-size:11.5px}
+  .hint.warn{color:var(--warn)}
+  .hint b{color:var(--fg); font-weight:600}
+
+  .cvrow{display:flex; align-items:center; gap:8px; margin-bottom:6px}
+  .cvrow .nm{flex:1; font-family:var(--mono); font-size:12px; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap}
+  .cvrow .seg button{padding:3px 8px; font-size:12px}
+
+  #drop{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(20,22,26,.94); z-index:200; text-align:center; padding:30px;
+  }
+  #drop.hide{display:none}
+  #drop h2{margin:0 0 6px; font-size:22px; font-weight:600}
+  #drop p{color:var(--dim); margin:0 0 18px; font-size:14px}
+  #drop .zone{border:2px dashed var(--line); border-radius:12px; padding:34px 28px; max-width:540px;
+    transition:border-color .15s, background .15s}
+  #drop.over .zone{border-color:var(--accent); background:rgba(255,140,58,.07)}
+
+  .tmpl-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px}
+  .tmpl-item{display:flex; align-items:center; justify-content:center; min-height:32px; padding:6px 8px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:6px; color:var(--fg);
+    cursor:pointer; font-size:12px; text-align:center; transition:border-color .12s, background .12s}
+  .tmpl-item:hover{border-color:var(--accent); background:var(--panel3)}
+  .tree{font-family:var(--mono); font-size:12px}
+  .tree .file{color:var(--fg); font-size:11.5px; padding:5px 4px 3px; border-top:1px solid var(--line);
+    margin-top:6px; display:flex; gap:6px; align-items:center}
+  .tree .file:first-child{border-top:0; margin-top:0}
+  .tree .file .x{margin-left:auto}
+  .tree .menu{margin-bottom:7px}
+  .tree .mname{color:var(--accent); padding:3px 6px; display:flex; justify-content:space-between;
+    gap:6px; cursor:pointer; border-radius:4px}
+  .tree .mname:hover{background:var(--panel2)}
+  .tree .mname.sel{background:rgba(255,140,58,.16)}
+  .tree .mname .cnt{color:var(--dim); font-size:11px; font-weight:400; margin-left:auto}
+  .tree .mname button{padding:0 5px; font-size:11px; line-height:1.4; color:var(--dim)}
+  .tree .item{
+    padding:3px 6px 3px 16px; border-radius:4px; cursor:pointer; color:var(--dim);
+    display:flex; justify-content:space-between; gap:6px; align-items:center;
+  }
+  .tree .item:hover{background:var(--panel2); color:var(--fg)}
+  .tree .item.sel{background:rgba(255,140,58,.16); color:var(--fg)}
+  .tree .item.sel2{background:rgba(74,163,255,.14); color:var(--fg)}
+  .tree .item.hidden-el{opacity:.42}
+  .tree .item.gone{text-decoration:line-through; opacity:.4}
+  .tree .nm{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .tree .item .rc{font-size:10.5px; color:var(--dim2); flex:none}
+  .tree .eye{flex:none; width:15px; padding:0; border:0; background:none; cursor:pointer;
+    color:var(--dim2); font-size:11px; line-height:1.4; text-align:center}
+  .tree .eye:hover{color:var(--fg); background:none; border:0}
+  .tree .item.off, .tree .mname.off{opacity:.4}
+  .tree .item.off .nm{text-decoration:none}
+  .tree .stack{border:1px solid var(--line); border-radius:6px; padding:3px}
+  .tree .stack .item{padding-left:6px}
+  .tree .depth{color:var(--dim2); font-size:10.5px; flex:none}
+  .tree .item.edited .rc{color:var(--accent)}
+  .tree .item .nw{color:var(--ok)}
+
+  .kv{font-family:var(--mono); font-size:12px; line-height:1.55}
+  .kv > div{display:flex; gap:8px; padding:1px 0}
+  .kv .k{color:var(--dim); flex:none; min-width:92px}
+  .kv .v{word-break:break-word}
+  .kv .no{color:var(--err)}
+  .kv .yes{color:var(--ok)}
+
+  .pgroup{margin-bottom:10px}
+  .pgroup > .ph{font-size:10.5px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--dim2); margin:10px 0 5px; font-weight:600}
+  .prow{display:flex; align-items:center; gap:6px; margin-bottom:5px; min-height:26px}
+  .prow > .pk{flex:none; width:88px; font-family:var(--mono); font-size:11.5px; color:var(--dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help}
+  .prow.dirty > .pk{color:var(--accent)}
+  .prow.dirty > .pk::after{content:" •"}
+  .prow > .pv{flex:1; display:flex; align-items:center; gap:5px; min-width:0}
+  .prow > .pv > input[type=text], .prow > .pv > select{flex:1}
+  .prow > .pv > input[type=number], .prow > .pv > input.numf{width:58px; flex:none;
+    font-family:var(--mono); text-align:right}
+  .prow .pact{flex:none; display:flex; gap:3px; opacity:0; transition:opacity .1s}
+  .prow:hover .pact, .prow.dirty .pact{opacity:1}
+  .prow .pact button{padding:1px 5px; font-size:11px; border-radius:3px; color:var(--dim)}
+  .swatch{flex:none; width:22px; height:22px; border-radius:4px; border:1px solid var(--line);
+    padding:0; background:none; cursor:pointer; overflow:hidden;
+    background-image:linear-gradient(45deg,#555 25%,transparent 25%,transparent 75%,#555 75%),
+                     linear-gradient(45deg,#555 25%,#333 25%,#333 75%,#555 75%);
+    background-size:8px 8px; background-position:0 0,4px 4px}
+  .swatch i{display:block; width:100%; height:100%}
+  input[type=color]{width:0;height:0;opacity:0;position:absolute;pointer-events:none}
+  .alpha{flex:1; accent-color:var(--accent); min-width:30px}
+  .fchips{display:flex; flex-wrap:wrap; gap:4px}
+  .fchips button{padding:2px 7px; font-size:11px; border-radius:10px; color:var(--dim);
+    font-family:var(--mono)}
+  .fchips button.on{background:rgba(74,163,255,.18); border-color:var(--accent2); color:var(--fg)}
+  .fchips button.gt.on{background:rgba(255,140,58,.18); border-color:var(--accent)}
+  .thumb{flex:none; width:26px; height:26px; border:1px solid var(--line); border-radius:4px;
+    background:#0d0f13 center/contain no-repeat}
+  .rangeed{font-family:var(--mono); font-size:11.5px}
+  .rangerow{display:flex; align-items:center; gap:4px; margin-bottom:4px}
+  .rangerow input[type=number]{width:46px; flex:none}
+  .rangerow.act{background:rgba(255,140,58,.1); border-radius:4px; outline:1px solid rgba(255,140,58,.3)}
+  .prow.wide{flex-wrap:wrap}
+  .prow.wide > .pk{width:auto; flex:1}
+  .prow.wide > .pv{flex-basis:100%; order:3; margin-top:3px}
+  .pgroup > .ph:first-child{margin-top:0}
+  .addprop{display:flex; gap:5px; margin-top:8px}
+  .addprop select{flex:1}
+
+  .selhead{margin-bottom:12px; display:flex; align-items:flex-start; gap:8px}
+  .selhead .st{flex:1; min-width:0}
+  .selhead .selname{font-size:14.5px; font-weight:600; word-break:break-word}
+  .selhead .selmenu{font-size:11.5px; color:var(--dim); font-family:var(--mono)}
+  .selhead .acts{flex:none; display:flex; gap:4px}
+  .empty{color:var(--dim); font-size:13px; text-align:center; padding:30px 10px; line-height:1.7}
+
+  .alignbar{display:grid; grid-template-columns:repeat(6,1fr); gap:4px}
+  .alignbar button{padding:6px 0; font-size:14px; line-height:1}
+
+  #changesBar{flex:none; border-top:1px solid var(--line); padding:8px 13px; background:var(--panel2)}
+  #changesBar .chhead{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); margin-bottom:4px}
+  #changesBar .chhead b{color:var(--accent)}
+  #changes{font-family:var(--mono); font-size:11.5px; color:var(--dim); max-height:110px; overflow-y:auto}
+  #changes .ch{padding:1px 0; cursor:pointer; border-radius:3px}
+  #changes .ch:hover{background:var(--panel3); color:var(--fg)}
+  #changes .ch b{color:var(--fg); font-weight:600}
+
+  .diff{font-family:var(--mono); font-size:11px; line-height:1.5; white-space:pre;
+    overflow-x:auto; background:#101318; border:1px solid var(--line); border-radius:6px; padding:6px 0}
+  .diff div{padding:0 8px}
+  .diff .add{background:var(--add); color:#c8f0d2}
+  .diff .del{background:var(--del); color:#f0c8c8}
+  .diff .gap{color:var(--dim2); background:#161a20; font-style:italic; padding:1px 8px}
+  .diff .n{color:var(--dim2); display:inline-block; width:34px; user-select:none}
+
+  .lintrow{display:flex; gap:7px; padding:4px 6px; border-radius:4px; font-size:12px;
+    cursor:pointer; align-items:flex-start}
+  .lintrow:hover{background:var(--panel2)}
+  .lintrow .lv{flex:none; font-weight:700}
+  .lintrow.warn .lv{color:var(--warn)}
+  .lintrow.info .lv{color:var(--accent2)}
+  .lintrow .lt{flex:1}
+  .lintrow .lt b{font-family:var(--mono); font-weight:400; color:var(--fg)}
+
+  .fileblock{border:1px solid var(--line); border-radius:6px; padding:9px; margin-bottom:10px}
+  .fileblock .fh{display:flex; align-items:center; gap:8px; margin-bottom:7px}
+  .fileblock .fh .fn{font-family:var(--mono); font-size:12.5px; flex:1; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap}
+  .fileblock .fh .cnt{color:var(--accent); font-size:11.5px}
+
+  footer{
+    flex:none; padding:5px 14px; background:var(--panel); border-top:1px solid var(--line);
+    font-size:12px; color:var(--dim); display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+  }
+  footer .k{font-family:var(--mono); color:var(--fg); background:var(--panel2);
+    padding:1px 5px; border-radius:3px; border:1px solid var(--line)}
+  #coord{font-family:var(--mono); color:var(--dim)}
+  #status{margin-left:auto; color:var(--fg)}
+
+  #restore{position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:210;
+    background:var(--panel2); border:1px solid var(--accent); border-radius:8px;
+    padding:8px 12px; display:flex; gap:9px; align-items:center; font-size:12.5px;
+    box-shadow:0 8px 26px -8px #000}
+
+  kbd{font-family:var(--mono); background:var(--panel2); border:1px solid var(--line);
+    border-radius:3px; padding:0 4px; font-size:11px}
+  @media (max-width:1100px){ aside{width:320px} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><b>menuview</b> <span class="sub">Quake Live HUD Editor</span></h1>
+  <div class="spacer"></div>
+  <span id="fname"></span>
+  <button id="btnUndo" class="icon" title="Undo (Ctrl+Z)" disabled>↶</button>
+  <button id="btnRedo" class="icon" title="Redo (Ctrl+Y)" disabled>↷</button>
+  <button id="btnOpen">Open</button>
+  <button id="btnAdd" title="load another .menu file – the open one stays open">＋ File</button>
+  <button id="btnReset" disabled>Discard</button>
+  <button id="btnSave" class="primary" disabled>Save</button>
+</header>
+
+<main>
+  <div class="stagewrap">
+    <div class="toolbar">
+      <span class="fixed-aspect" title="Quake Live draws the HUD at 16:9.">16:9</span>
+      <div class="sep"></div>
+      <label class="t">Zoom</label>
+      <input type="range" id="simZoom" min="40" max="400" value="180">
+      <span class="val" id="vZoom">180%</span>
+      <button id="btnFit" class="mini" title="Fit (F)">fit</button>
+      <div class="sep"></div>
+      <label class="chip"><input type="checkbox" id="optGrid" checked><span>Grid</span></label>
+      <label class="chip"><input type="checkbox" id="optCenter" checked><span>Center</span></label>
+      <label class="chip"><input type="checkbox" id="optBoxes"><span>Boxes</span></label>
+      <label class="chip"><input type="checkbox" id="optHidden"><span>Hidden</span></label>
+      <label class="chip"><input type="checkbox" id="optArt" checked><span>Images</span></label>
+      <label class="chip"><input type="checkbox" id="optSnap" checked><span>Snap</span></label>
+      <div class="sep"></div>
+      <label class="t">Background</label>
+      <select id="bgPreset" style="width:150px">
+        <option value="">Default</option>
+      </select>
+      <div class="sep"></div>
+      <button id="btnShot" class="mini" title="Use a screenshot as background">Screenshot</button>
+      <input type="range" id="shotAlpha" min="0" max="100" value="55" style="width:70px" hidden>
+      <button id="btnShotOff" class="mini" hidden>×</button>
+    </div>
+
+    <div id="stage">
+      <div id="stageInner">
+        <div id="screen"><img id="backdrop" alt="" hidden><div id="band"></div><div id="centerV"></div></div>
+      </div>
+      <div id="drop">
+        <div class="zone">
+          <h2>Drop HUD files here</h2>
+          <p>or click to choose – several <code>.menu</code> files at once work too</p>
+          <button class="primary" id="btnPick">Choose .menu</button>
+          <div class="hint">
+            Everything runs locally in the browser – nothing is uploaded.<br>
+            Expects <code>.menu</code> files from <code>baseq3/ui/</code>.
+          </div>
+        </div>
+      </div>
+      <div id="restore" hidden>
+        <span id="restoreTxt"></span>
+        <button id="btnRestore" class="primary mini">restore</button>
+        <button id="btnRestoreNo" class="mini">discard</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="gutter" id="gutter"></div>
+
+  <aside>
+    <div class="tabs">
+      <button data-tab="sim" class="on">Simulation</button>
+      <button data-tab="tree">Layers</button>
+      <button data-tab="prop">Selection</button>
+      <button data-tab="file">File<span class="badge" id="tabBadge" hidden>0</span></button>
+    </div>
+
+    <div class="pane on" id="pane-sim">
+      <div class="grp">
+        <div class="row">
+          <label>Gametype</label>
+          <select id="simGametype"></select>
+        </div>
+        <div class="row">
+          <label>My team</label>
+          <div class="seg" id="simTeam">
+            <button data-team="red" class="on">Red</button>
+            <button data-team="blue">Blue</button>
+            <button data-team="free">none</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp">
+        <h3>Values</h3>
+        <div class="row"><label>Health</label><input type="range" id="simHealth" min="0" max="500" value="200"><span class="val" id="vHealth">200</span></div>
+        <div class="row"><label>Armor</label><input type="range" id="simArmor" min="0" max="200" value="75"><span class="val" id="vArmor">75</span></div>
+        <div class="row"><label>Ammo</label><input type="range" id="simAmmo" min="-1" max="200" value="25"><span class="val" id="vAmmo">25</span></div>
+        <div class="row"><label>Weapon</label><select id="simWeapon"></select></div>
+      </div>
+
+      <details class="grp">
+        <summary>Scores &amp; alive</summary>
+        <div class="row"><label>Red score</label><input type="range" id="simRedScore" min="0" max="15" value="5"><span class="val" id="vRedScore">5</span></div>
+        <div class="row"><label>Blue score</label><input type="range" id="simBlueScore" min="0" max="15" value="3"><span class="val" id="vBlueScore">3</span></div>
+        <div class="row"><label>Own score</label><input type="range" id="simMyScore" min="0" max="50" value="7"><span class="val" id="vMyScore">7</span></div>
+        <div class="row"><label>Red alive</label><input type="range" id="simRedAlive" min="0" max="8" value="3"><span class="val" id="vRedAlive">3</span></div>
+        <div class="row"><label>Blue alive</label><input type="range" id="simBlueAlive" min="0" max="8" value="2"><span class="val" id="vBlueAlive">2</span></div>
+      </details>
+
+      <div class="grp" id="stateGrp">
+        <h3>Game state</h3>
+        <div class="fchips" id="simState"></div>
+        <p class="hint">Controls the <code>ownerdrawflag</code> conditions that do not depend
+          on the game mode – warmup, leading, flag, chat.</p>
+      </div>
+
+      <div class="grp" id="cvarGrp" hidden>
+        <h3>Cvars in this file
+          <span class="h3btns">
+            <button id="cvAllOn" class="mini">all 1</button>
+            <button id="cvAllOff" class="mini">all –</button>
+          </span>
+        </h3>
+        <div id="cvarList"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-tree">
+      <div class="grp" id="stackGrp" hidden>
+        <h3>Stacked here
+          <span class="h3btns"><button id="stackClear" class="mini">clear</button></span>
+        </h3>
+        <div class="tree stack" id="stackList"></div>
+        <p class="hint">Everything at the last clicked spot – <b>top is front</b>.
+          This way you can reach covered items too.</p>
+      </div>
+
+      <div class="row">
+        <input type="text" id="treeFilter" placeholder="filter – name, ownerdraw, image …" style="flex:1">
+        <button id="treeClear" class="icon" title="Clear filter">×</button>
+      </div>
+      <div class="row" style="margin-bottom:10px; flex-wrap:wrap">
+        <label class="chip"><input type="checkbox" id="treeOnlyVis"><span>visible only</span></label>
+        <label class="chip"><input type="checkbox" id="treeOnlyEdit"><span>changed only</span></label>
+        <button id="btnNew" class="mini" title="create an empty item in the selected block">＋ Item</button>
+      </div>
+
+      <details class="grp">
+        <summary>Insert HUD objects</summary>
+        <div class="tmpl-grid" id="templateList"></div>
+      </details>
+
+      <div class="grp" style="margin-bottom:6px">
+        <h3>Layers
+          <span class="h3btns">
+            <button id="eyeAllOn" class="mini" title="show all items hidden in the editor again">show all</button>
+          </span>
+        </h3>
+        <p class="hint" style="margin:0">Same order as on screen: <b>top is front</b>.
+          The <b>eye</b> only hides in the editor – the file stays untouched.
+          <kbd>Ctrl</kbd>+click selects several.</p>
+      </div>
+      <div class="tree" id="tree"></div>
+    </div>
+
+    <div class="pane" id="pane-prop">
+      <div id="propEmpty" class="empty">
+        No item selected.<br>
+        Click one in the HUD or pick it in the <b>Layers</b> tab.<br><br>
+        <span style="font-size:12px">
+          <kbd>Ctrl</kbd>+click selects several · dragging on empty space draws a box
+        </span>
+      </div>
+
+      <div id="propMulti" hidden>
+        <div class="grp">
+          <h3><span id="multiCount"></span> selected</h3>
+          <div class="alignbar">
+            <button data-al="left"   title="left edges">⇤</button>
+            <button data-al="hcenter" title="center horizontally">⇹</button>
+            <button data-al="right"  title="right edges">⇥</button>
+            <button data-al="top"    title="top edges">⤒</button>
+            <button data-al="vcenter" title="center vertically">⇳</button>
+            <button data-al="bottom" title="bottom edges">⤓</button>
+          </div>
+          <div class="alignbar" style="margin-top:5px">
+            <button data-al="dh" style="grid-column:span 3" title="distribute evenly horizontally">↔ distribute</button>
+            <button data-al="dv" style="grid-column:span 3" title="distribute evenly vertically">↕ distribute</button>
+          </div>
+          <div class="alignbar" style="margin-top:5px">
+            <button data-al="sw" style="grid-column:span 3" title="same width as the first">= width</button>
+            <button data-al="sh" style="grid-column:span 3" title="same height as the first">= height</button>
+          </div>
+          <p class="hint">The reference is always the <b>first selected</b> item (orange outline).</p>
+        </div>
+        <div class="grp">
+          <h3>Show in
+            <span class="h3btns">
+              <button id="gtAllM" class="mini">all</button>
+              <button id="gtTeamM" class="mini">team</button>
+              <button id="gtCurM" class="mini">current only</button>
+            </span>
+          </h3>
+          <div class="gtgrid" id="multiGT"></div>
+        </div>
+        <div class="grp">
+          <h3>Change together</h3>
+          <div id="multiProps"></div>
+        </div>
+        <div class="grp">
+          <h3>All
+            <span class="h3btns">
+              <button id="mDup" class="mini">duplicate</button>
+              <button id="mDel" class="mini danger">delete</button>
+            </span>
+          </h3>
+          <div class="kv" id="multiList"></div>
+        </div>
+      </div>
+
+      <div id="propBody" hidden>
+        <div class="selhead">
+          <div class="st">
+            <div class="selname" id="propName"></div>
+            <div class="selmenu" id="propMenu"></div>
+          </div>
+          <div class="acts">
+            <button id="btnDup" class="mini" title="duplicate (Ctrl+D)">duplicate</button>
+            <button id="btnDel" class="mini danger" title="delete (Del)">delete</button>
+          </div>
+        </div>
+
+        <div class="grp" id="grpPos">
+          <h3>Position
+            <span class="h3btns">
+              <button id="posCenterH" class="mini" title="center horizontally on screen">center ↔</button>
+              <button id="posCopy" class="mini" title="copy position">copy</button>
+              <button id="posPaste" class="mini" title="paste position">paste</button>
+            </span>
+          </h3>
+          <div class="pos">
+            <label>x</label><input type="text" inputmode="decimal" id="pX">
+            <label>y</label><input type="text" inputmode="decimal" id="pY">
+            <label>w</label><input type="text" inputmode="decimal" id="pW">
+            <label>h</label><input type="text" inputmode="decimal" id="pH">
+            <span class="abs" id="pAbs"></span>
+          </div>
+        </div>
+
+        <div class="grp" id="grpGT">
+          <h3>Show in
+            <span class="h3btns">
+              <button id="gtAll" class="mini">all</button>
+              <button id="gtTeam" class="mini">team</button>
+              <button id="gtCur" class="mini">current only</button>
+            </span>
+          </h3>
+          <div class="gtgrid" id="propGT"></div>
+          <p class="hint" id="gtOut"></p>
+        </div>
+
+        <div class="grp">
+          <h3>Visibility</h3>
+          <div class="kv" id="propVis"></div>
+        </div>
+
+        <div class="grp">
+          <h3>Properties
+            <span class="h3btns">
+              <button id="btnCopyProps" class="mini" title="copy all properties">copy</button>
+              <button id="btnPasteProps" class="mini" title="apply copied properties">paste</button>
+            </span>
+          </h3>
+          <div id="propEdit"></div>
+          <div class="addprop">
+            <select id="addPropSel"><option value="">＋ Property …</option></select>
+            <button id="addPropBtn">add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grp" id="grpCopyTo" hidden>
+        <h3>Copy to another HUD</h3>
+        <div class="row">
+          <select id="copyToSel" title="target block – the groups are the open files"></select>
+          <button id="copyToBtn" class="mini">copy →</button>
+        </div>
+        <label class="chip"><input type="checkbox" id="copyToKeep" checked><span>keep screen position</span></label>
+        <p class="hint" id="copyToInfo"></p>
+        <p class="hint">Creates the selection as new items in the chosen block – also in another
+          file. Both <code>.menu</code> files must be open for that:
+          <b>＋ File</b> at the top loads another one without closing the open one.</p>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-file">
+      <div class="grp">
+        <h3>Checks
+          <span class="h3btns"><span id="lintCount" class="hint" style="margin:0"></span></span>
+        </h3>
+        <div id="lintList"></div>
+      </div>
+      <div class="grp">
+        <h3>What gets saved</h3>
+        <div id="fileList"></div>
+      </div>
+    </div>
+
+    <div id="changesBar" hidden>
+      <div class="chhead"><b id="chCount">0</b><span>changes</span>
+        <span class="spacer"></span>
+        <button id="chClear" class="mini">discard all</button>
+      </div>
+      <div id="changes"></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <span>drag · <span class="k">↑↓←→</span> move 1 px</span>
+  <span><span class="k">Ctrl</span>+click select several</span>
+  <span><span class="k">Ctrl+D</span> duplicate</span>
+  <span><span class="k">Del</span> delete</span>
+  <span>into another HUD? → <span class="k">Selection</span> tab</span>
+  <span><span class="k">Space</span> pan</span>
+  <span>items stacked? → <span class="k">Layers</span> tab</span>
+  <span id="coord"></span>
+  <span id="status"></span>
+</footer>
+
+<input type="file" id="file" accept=".menu,.txt,.cfg" multiple style="display:none">
+<input type="file" id="shotFile" accept="image/*" style="display:none">
+<datalist id="assetList"></datalist>
+
+<script src="assets/game/index.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
