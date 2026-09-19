@@ -6,7 +6,7 @@ Drop in your `.menu` files and see your HUD the way the game draws it. Drag thin
 
 No install, no build step, no upload. Everything runs locally, and your HUD files never leave your machine.
 
-**▶ [Open hudview](https://sirquakealot.github.io/hudview/)**
+**▶ [Open hudview](https://sirquakealot.github.io/HUDView/)**
 
 ---
 
@@ -65,12 +65,12 @@ hudview flags things that fail silently in game: missing rects, elements far off
 
 ## Getting started
 
-**Online:** open the [hosted version](https://sirquakealot.github.io/hudview/) and drag your `.menu` files onto the page.
+**Online:** open the [hosted version](https://sirquakealot.github.io/HUDView/) and drag your `.menu` files onto the page.
 
 **Offline:** clone the repo and double-click `index.html`. That's all it takes.
 
 ```
-git clone https://github.com/sirquakealot/hudview.git
+git clone https://github.com/sirquakealot/HUDView.git
 ```
 
 Your HUD files are in `baseq3/ui/` (for example `hud.menu`). Many HUDs are split across several files, so drop them in together to see the full picture.
