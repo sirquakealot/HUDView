@@ -29,11 +29,8 @@ things that fail silently in game.
 ## Getting started
 
 Open the [hosted version](https://sirquakealot.github.io/HUDView/) and drag your `.menu` files
-onto the page, or clone the repo and open `index.html`.
+onto the page, or download and open `index.html`.
 
-```
-git clone https://github.com/sirquakealot/HUDView.git
-```
 
 Your HUD lives in `baseq3/ui/`, usually `hud.menu`. Many HUDs are split across several files,
 so drop them in together to see the full picture.
