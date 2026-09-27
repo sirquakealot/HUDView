@@ -131,6 +131,8 @@ const ICON_DRAWS = new Set([
   "CG_AREA_POWERUP","CG_CTF_POWERUP","CG_HARVESTER_SKULLS","CG_PLAYER_HEAD","CG_SELECTEDPLAYER_HEAD"
 ]);
 const AREA_DRAWS = { CG_AREA_NEW_CHAT:"Chat", CG_TEAM_COLORIZED:"Team color" };
+const CHAT_LINE_U = 10;   // virtual units per chat line
+const CHAT_SAMPLE = [["s0cke","gl hf"], ["krole","nice rail"], ["pz","gg"]];
 
 const VALUE_DRAWS = new Set([
   "CG_PLAYER_HEALTH","CG_PLAYER_ARMOR_VALUE","CG_PLAYER_AMMO_VALUE"
@@ -268,6 +270,9 @@ function xform(menu, visW){
     default:       return {s:visW / VW, t:0};
   }
 }
+// the game draws the chat area anchored to the left screen edge, whatever the block's widescreen says
+const pinnedLeft = item => item && P(item).ownerdraw && P(item).ownerdraw[0] === "CG_AREA_NEW_CHAT";
+const itemXform = (item, visW) => pinnedLeft(item) ? {s:1, t:0} : xform(item.menu, visW);
 const scaleOf = item => numOf((P(item).textscale || [])[0], 0.5) || 0.5;
 
 function alignOf(item){
@@ -417,13 +422,13 @@ function drawStage(){
       if(!gtOfProps(P(menu)).has(sim.gametype)) continue;
     }catch(e){}
     if(hiddenView.has(menu)) continue;
-    const tf = xform(menu, visW);
     for(const item of menu.items){
       if(edits.isRemoved(item) || hiddenView.has(item)) continue;
       const vis = isVisible(item);
       if(!vis && !showHidden) continue;
       const r = absRect(item);
       if(!r) continue;
+      const tf = itemXform(item, visW);
 
       const x = r[0]*tf.s + tf.t, y = r[1], w = r[2]*tf.s, hh = r[3];
       const p = P(item);
@@ -459,9 +464,22 @@ function drawStage(){
         if(url) paintArt(el, url, tint, bg, od, w, hh);
         else    drawPlaceholder(el, bg, od, tint, w, hh);
       } else if(od && AREA_DRAWS[od]){
-        const ar = h("div", { class:"area", text:AREA_DRAWS[od] });
+        const ar = h("div", { class:"area" + (od === "CG_AREA_NEW_CHAT" ? " chat" : ""), text:AREA_DRAWS[od] });
         if(od === "CG_TEAM_COLORIZED")
           ar.style.background = sim.team === "blue" ? "rgba(70,110,255,.45)" : "rgba(220,60,50,.45)";
+        // the game draws chat lines from the bottom-left of the rect, newest at the bottom
+        if(od === "CG_AREA_NEW_CHAT" && sim.chat){
+          const lines = h("div", { class:"chatlines" });
+          lines.style.font = "700 " + (CHAT_LINE_U * .8 * zoom) + "px/" + (CHAT_LINE_U * zoom) + "px " + FONT_STACK;
+          lines.style.padding = "0 " + (2 * zoom) + "px";
+          for(const [who, msg] of CHAT_SAMPLE){
+            const ln = h("div");
+            ln.appendChild(h("span", { class:"who", text:who + ": " }));
+            ln.appendChild(document.createTextNode(msg));
+            lines.appendChild(ln);
+          }
+          ar.appendChild(lines);
+        }
         el.appendChild(ar);
       }
 
@@ -541,7 +559,7 @@ function drawHandles(){
   }
   const r = absRect(p);
   if(!r) return;
-  const tf = xform(p.menu, visW);
+  const tf = itemXform(p, visW);
   const x = (r[0]*tf.s + tf.t) * zoom, y = r[1] * zoom;
 
   if(textOnly(p)){
@@ -1156,7 +1174,7 @@ function copyItemsTo(menu, targets, keepScreenPos){
   pushUndo();
 
   const visW = VH * aspect;
-  const dst  = xform(menu, visW);
+  const menuDst = xform(menu, visW);
   const [dox, doy] = menuOffset(menu);
   const anchor = [...menu.items].reverse().find(it => !it.isNew) || null;
   const last   = menu.items[menu.items.length - 1] || null;
@@ -1169,7 +1187,7 @@ function copyItemsTo(menu, targets, keepScreenPos){
 
     const r = rectOf(props);
     if(r && keepScreenPos && src.menu !== menu){
-      const s = xform(src.menu, visW);
+      const s = itemXform(src, visW), dst = pinnedLeft(src) ? s : menuDst;
       const [sox, soy] = menuOffset(src.menu);
       const rest = props.rect.slice(4);
       props.rect = [ ((r[0] + sox) * s.s + s.t - dst.t) / dst.s - dox,
@@ -1367,11 +1385,11 @@ function snapTargets(exclude){
   const xs = [0, visW/2, visW, (visW-VW)/2, (visW+VW)/2];
   const ys = [0, VH/2, VH];
   for(const doc of docs) for(const menu of doc.menus){
-    const tf = xform(menu, visW);
     for(const it of menu.items){
       if(exclude.includes(it) || edits.isRemoved(it) || isHidden(it)) continue;
       const r = absRect(it);
       if(!r) continue;
+      const tf = itemXform(it, visW);
       const x = r[0]*tf.s + tf.t, w = r[2]*tf.s;
       xs.push(x, x + w/2, x + w);
       ys.push(r[1], r[1] + r[3]/2, r[1] + r[3]);
@@ -1405,7 +1423,7 @@ screenEl.addEventListener("mousedown", e=>{
     if(!r) return;
     pushUndo();
     drag = { mode:"resize", dir:hnd._resize, targets:[t], start:[r.slice()],
-             sx:e.clientX, sy:e.clientY, s:xform(t.menu, VH*aspect).s };
+             sx:e.clientX, sy:e.clientY, s:itemXform(t, VH*aspect).s };
     e.preventDefault();
     return;
   }
@@ -1443,7 +1461,7 @@ screenEl.addEventListener("mousedown", e=>{
   if(!targets.length) return;
   pushUndo();
   drag = { mode:"move", targets, start:targets.map(t => itemRect(t)), item, after,
-           sx:e.clientX, sy:e.clientY, s:xform(item.menu, VH*aspect).s, moved:false };
+           sx:e.clientX, sy:e.clientY, s:itemXform(item, VH*aspect).s, moved:false };
   e.preventDefault();
 });
 
@@ -1470,7 +1488,7 @@ window.addEventListener("mousemove", e=>{
     let dx = Math.round(dxRaw), dy = Math.round(dyRaw);
     if(snapOn && drag.targets[0].kind === "item"){
       const t0 = drag.targets[0], r0 = drag.start[0];
-      const tf = xform(t0.menu, VH*aspect);
+      const tf = itemXform(t0, VH*aspect);
       const [ox,oy] = menuOffset(t0.menu);
       const x = (r0[0]+dx+ox)*tf.s + tf.t, w = r0[2]*tf.s;
       const y = r0[1]+dy+oy, hh = r0[3];

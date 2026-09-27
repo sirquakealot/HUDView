@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>menuview – Quake Live HUD Editor</title>
+<title>HUDview QL – Quake Live HUD Editor</title>
 <style>
   :root{
     --bg:#14161a; --panel:#1c1f26; --panel2:#22262f; --panel3:#282d38; --line:#2e3440;
@@ -134,6 +134,10 @@
     background:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0 6px,transparent 6px 12px);
     display:flex; align-items:center; justify-content:center; overflow:hidden;
     color:rgba(255,255,255,.55); font:10px/1 var(--mono)}
+  .el .area.chat{align-items:flex-start; justify-content:flex-start; padding:2px 3px}
+  .el .area .chatlines{position:absolute; left:0; right:0; bottom:0;
+    color:#3f3; text-shadow:1px 1px 0 rgba(0,0,0,.7); white-space:nowrap; overflow:hidden}
+  .el .area .chatlines .who{color:#fff}
   .hnd{position:absolute; width:9px; height:9px; margin:-5px 0 0 -5px; z-index:60;
     background:var(--accent); border:1px solid #1a1207; border-radius:2px}
   .hnd.nw,.hnd.se{cursor:nwse-resize} .hnd.ne,.hnd.sw{cursor:nesw-resize}
@@ -376,7 +380,7 @@
 <body>
 
 <header>
-  <h1><b>menuview</b> <span class="sub">Quake Live HUD Editor</span></h1>
+  <h1><b>HUDview QL</b> <span class="sub">Quake Live HUD Editor</span></h1>
   <div class="spacer"></div>
   <span id="fname"></span>
   <button id="btnUndo" class="icon" title="Undo (Ctrl+Z)" disabled>↶</button>
